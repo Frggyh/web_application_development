@@ -71,13 +71,13 @@
 
 ---
 
-## 🛠️ 技术栈选择建议 (可选)
+## 🛠️ 技术栈选择
 
-为了实现以上功能，推荐使用以下技术栈（仅供参考）：
+为了实现以上功能，使用以下技术栈：
 
 | 层面 | 推荐技术 | 备注 |
 | :--- | :--- | :--- |
-| **前端 (Frontend)** | React / Vue / Angular | 用于构建动态、响应式的用户界面。 |
-| **后端 (Backend)** | Spring Boot / Django / Node.js (Express) | 提供 RESTful API 接口和业务逻辑支持。 |
-| **数据库 (Database)** | MySQL / PostgreSQL | 存储用户、课程、资源和问答等结构化数据。 |
-| **文件存储 (Storage)** | AWS S3 / 阿里云 OSS / 本地文件系统 | 用于存储上传的 PDF、图片、压缩包等大文件。 |
+| **前端 (Frontend)** |  Vue | 用于构建动态、响应式的用户界面。 |
+| **后端 (Backend)** | Spring Boot | 提供 RESTful API 接口和业务逻辑支持。 |
+| **数据库 (Database)** | MySQL | 存储用户、课程、资源和问答等结构化数据。 |
+
