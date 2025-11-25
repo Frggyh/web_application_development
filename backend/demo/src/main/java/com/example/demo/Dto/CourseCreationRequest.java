@@ -1,4 +1,4 @@
-package com.example.demo.Controller.Dto;
+package com.example.demo.Dto; // ★★★ 注意包名是 demo.Dto，没有 Controller ★★★
 
 import lombok.Data;
 import jakarta.validation.constraints.NotBlank;
@@ -13,4 +13,7 @@ public class CourseCreationRequest {
 
     @Size(max = 2000, message = "描述长度不能超过2000个字符")
     private String description;
+
+    // ★★★ 修正点：添加 college 字段 ★★★
+    private String college;
 }

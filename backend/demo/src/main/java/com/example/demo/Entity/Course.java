@@ -19,6 +19,7 @@ public class Course {
 
     private String college; // 开课学院
 
-    // 实际项目中，通常需要关联授课教师，我们稍后在 Repository 中处理关联查询。
-    // private Long teacherId;
+    // ★★★ 修正点：添加 teacherId 字段 ★★★
+    @Column(name = "teacher_id", nullable = false)
+    private Long teacherId;
 }
