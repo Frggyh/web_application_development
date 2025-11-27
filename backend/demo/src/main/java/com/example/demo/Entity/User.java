@@ -22,6 +22,9 @@ public class User {
     @Column(nullable = false)
     private String role; // ADMIN, TEACHER, STUDENT
 
-    // 简化后的个人简介/职称等信息
-    private String profile;
+    @Column(length = 100)
+    private String title; // 职称 (教师专用)
+
+    @Column(length = 500)
+    private String introduction; // 简介 (教师专用)
 }

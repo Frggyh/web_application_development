@@ -1,0 +1,54 @@
+package com.example.demo.Repository;
+
+import com.example.demo.Entity.Resource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ResourceRepository extends JpaRepository<Resource, Long> {
+
+    /**
+     * 根据课程ID和关键字（标题/描述）搜索资源，并实现分页
+     * 同时也需要考虑可见性（visibility）限制。
+     * * @param courseId 课程ID
+     * @param keyword 搜索关键字
+     * @param visibility 可见性范围 ('ALL' 或 'CLASS_ONLY')
+     * @param pageable 分页信息
+     * @return 分页结果
+     */
+
+    @Query("SELECT r FROM Resource r " +
+            "WHERE r.course.id = :courseId " +
+            "AND (r.title LIKE %:keyword% OR r.description LIKE %:keyword%) " +
+            "AND r.visibility IN :visibility") // 假设 visibility 是一个列表，用于匹配 ALL 或 CLASS_ONLY
+    Page<Resource> findByCourseIdAndKeywordAndVisibility(
+            @Param("courseId") Long courseId,
+            @Param("keyword") String keyword,
+            @Param("visibility") Iterable<String> visibility,
+            Pageable pageable);
+
+
+    /**
+     * 查找某个用户上传的所有资源 (用于学生个人中心)
+     */
+    Page<Resource> findByUploaderId(Long uploaderId, Pageable pageable);
+
+    /**
+     * 根据课程ID、可见性列表和关键字进行资源搜索
+     */
+    @Query("SELECT r FROM Resource r " +
+            "WHERE r.course.id = :courseId " +
+            "AND r.visibility IN :visibilityList " +
+            "AND (r.title LIKE %:keyword% OR r.description LIKE %:keyword%)")
+    Page<Resource> findByCourseIdAndVisibilityInAndKeyword(
+            @Param("courseId") Long courseId,
+            @Param("visibilityList") List<String> visibilityList,
+            @Param("keyword") String keyword,
+            Pageable pageable);
+}
