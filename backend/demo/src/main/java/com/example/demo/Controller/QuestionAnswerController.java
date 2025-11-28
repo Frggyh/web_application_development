@@ -121,8 +121,6 @@ public class QuestionAnswerController {
                 return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
             }
 
-            // TODO: 【核心权限】在 Service 层或此处的 @PreAuthorize 中，需要检查 replier 是否是该问题所属课程的授课教师。
-
             Answer answer = answerService.createAnswer(request, attachment, replier);
             return new ResponseEntity<>(answer, HttpStatus.CREATED);
 
@@ -200,6 +198,36 @@ public class QuestionAnswerController {
             return ResponseEntity.ok(updatedQuestion);
         } catch (IllegalArgumentException e) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * [教师专用] 获取自己课程的未回答问题数量，用于提醒
+     */
+    @PreAuthorize("hasAuthority('ROLE_TEACHER')")
+    @GetMapping("/teacher/unanswered-count")
+    public ResponseEntity<Long> getUnansweredQuestionCount(Authentication authentication) {
+        try {
+            User teacher = userService.findUserByUsername(authentication.getName());
+            Long count = questionService.countUnansweredQuestionsForTeacher(teacher.getId());
+            return ResponseEntity.ok(count);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * [学生专用] 获取自己提出的、已被回答的问题数量，用于提醒
+     */
+    @PreAuthorize("hasAuthority('ROLE_STUDENT')")
+    @GetMapping("/student/answered-count")
+    public ResponseEntity<Long> getAnsweredQuestionCount(Authentication authentication) {
+        try {
+            User student = userService.findUserByUsername(authentication.getName());
+            Long count = questionService.countAnsweredQuestionsForStudent(student.getId());
+            return ResponseEntity.ok(count);
         } catch (Exception e) {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }

@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface QuestionRepository extends JpaRepository<Question, Long> {
 
@@ -38,4 +40,16 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
      * 统计某个课程下未回答的问题数量 (用于教师新问题提醒)
      */
     long countByCourseIdAndStatus(Long courseId, String status);
+
+    /**
+     * 统计指定课程ID列表中，状态为 'UNANSWERED' 的问题数量
+     */
+    @Query("SELECT COUNT(q) FROM Question q WHERE q.course.id IN :courseIds AND q.status = 'UNANSWERED'")
+    Long countUnansweredByCourseIds(@Param("courseIds") List<Long> courseIds);
+
+    /**
+     * 统计指定学生提出的、状态为 'ANSWERED' 的问题数量
+     */
+    @Query("SELECT COUNT(q) FROM Question q WHERE q.asker.id = :studentId AND q.status = 'ANSWERED'")
+    Long countAnsweredQuestionsByStudentId(@Param("studentId") Long studentId);
 }

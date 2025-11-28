@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -33,6 +34,9 @@ public class QuestionService {
 
     @Autowired
     private CourseRepository courseRepository;
+
+    @Autowired
+    private UserService userService;
 
     /**
      * 学生提问并上传附件
@@ -143,5 +147,27 @@ public class QuestionService {
         // 不允许修改所属课程
 
         return questionRepository.save(existing);
+    }
+
+    /**
+     * 统计指定教师所教授课程的未回答问题数量
+     */
+    public Long countUnansweredQuestionsForTeacher(Long teacherId) {
+        // 1. 获取该教师负责的所有课程ID
+        List<Long> courseIds = userService.findTaughtCourseIds(teacherId);
+
+        if (courseIds.isEmpty()) {
+            return 0L; // 如果没有负责任何课程，则返回0
+        }
+
+        // 2. 使用 Repository 进行计数
+        return questionRepository.countUnansweredByCourseIds(courseIds);
+    }
+
+    /**
+     * 统计指定学生提出的、已被回答的问题数量
+     */
+    public Long countAnsweredQuestionsForStudent(Long studentId) {
+        return questionRepository.countAnsweredQuestionsByStudentId(studentId);
     }
 }
