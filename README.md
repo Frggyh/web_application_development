@@ -1,4 +1,40 @@
-# 📚 在线学习资源共享与答疑互动平台
+# 如何运行本程序？
+## 首先确保你已安装了：
+* **Maven**
+* **Node.js**
+* **Mysql**
+* **仓库中自带了npm**
+
+## 运行步骤
+1) clone本仓库并进入项目根目录  
+
+2) 准备数据库    
+- 执行 `docs/init_database.sql`：  
+```bash
+mysql -u root -p < docs/initialize_database.sql
+```
+
+3) 启动后端（Spring Boot）  
+```bash
+cd backend/demo
+mvn clean package -DskipTests
+mvn spring-boot:run
+```
+- 然后默认监听 `http://localhost:8080`。
+
+4) 启动前端（Vue）  
+```bash
+cd frontend
+npm install   # 如果首次运行
+npm run dev
+```
+- 默认地址 `http://localhost:5173`
+
+5) 项目部署完成，开始使用
+
+
+
+# 📚 在线学习资源共享与答疑互动平台项目介绍
 
 ## 🚀 项目简介
 
