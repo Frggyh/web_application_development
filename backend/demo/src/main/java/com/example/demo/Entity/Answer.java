@@ -35,6 +35,10 @@ public class Answer {
     // 附件路径（支持图片附件）
     @Column(length = 255)
     private String attachmentPath;
+    
+    // 附件原始文件名
+    @Column(length = 255)
+    private String attachmentFileName;
 
     // 是否被提问者查阅过 (用于通知提醒)
     @Column(columnDefinition = "boolean default false")

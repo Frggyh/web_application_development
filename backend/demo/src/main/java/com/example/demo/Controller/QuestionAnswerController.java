@@ -11,6 +11,7 @@ import com.example.demo.Service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -20,7 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 
 @RestController
@@ -59,9 +60,13 @@ public class QuestionAnswerController {
             return new ResponseEntity<>(question, HttpStatus.CREATED);
 
         } catch (IllegalArgumentException e) {
+            System.out.println("创建问题失败 - IllegalArgumentException: " + e.getMessage());
+            e.printStackTrace();
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST); // 课程不存在等
         } catch (Exception e) {
             // 文件存储或其他内部错误
+            System.out.println("创建问题失败 - Exception: " + e.getMessage());
+            e.printStackTrace();
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -80,6 +85,34 @@ public class QuestionAnswerController {
 
         try {
             Page<Question> questions = questionService.searchQuestions(courseId, keyword, status, pageable);
+            return ResponseEntity.ok(questions);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 获取当前登录用户自己的提问列表，可按状态筛选
+     * 说明：依赖全局 SecurityConfig 已经对 /api/** 做了认证拦截，
+     * 这里不再使用 @PreAuthorize，避免表达式评估异常导致 403。
+     */
+    @GetMapping("/my-questions")
+    public ResponseEntity<Page<Question>> getMyQuestions(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String status,
+            Authentication authentication) {
+
+        try {
+            User student = userService.findUserByUsername(authentication.getName());
+            if (student == null) {
+                return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+            }
+            Page<Question> questions = questionService.findMyQuestions(
+                    student.getId(),
+                    status,
+                    PageRequest.of(page, size)
+            );
             return ResponseEntity.ok(questions);
         } catch (Exception e) {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -230,6 +263,171 @@ public class QuestionAnswerController {
             return ResponseEntity.ok(count);
         } catch (Exception e) {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 全站问答搜索：支持按课程、教师、关键字、状态筛选
+     */
+    @PreAuthorize("isAuthenticated()") // 登录用户都可以搜索
+    @GetMapping("/questions/search")
+    public ResponseEntity<Page<Question>> searchAllQuestions(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(required = false) Long teacherId,
+            @RequestParam(required = false, defaultValue = "") String keyword,
+            @RequestParam(required = false) String status, // UNANSWERED, ANSWERED
+            Pageable pageable) {
+        try {
+            Page<Question> questions = questionService.searchAllQuestions(
+                    courseId, teacherId, keyword, status, pageable);
+            return ResponseEntity.ok(questions);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 下载问题附件
+     */
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/questions/{questionId}/attachment")
+    public ResponseEntity<org.springframework.core.io.Resource> downloadQuestionAttachment(
+            @PathVariable Long questionId) {
+        try {
+            Question question = questionService.findById(questionId);
+            if (question.getAttachmentPath() == null || question.getAttachmentPath().isEmpty()) {
+                System.out.println("问题 " + questionId + " 没有附件");
+                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            }
+
+            // 获取文件路径
+            Path filePath = questionService.getAttachmentFilePath(question.getAttachmentPath());
+            org.springframework.core.io.Resource fileResource = 
+                    new org.springframework.core.io.FileSystemResource(filePath);
+
+            System.out.println("尝试下载问题附件 - 问题ID: " + questionId);
+            System.out.println("文件路径: " + filePath.toString());
+            System.out.println("文件是否存在: " + fileResource.exists());
+
+            if (!fileResource.exists()) {
+                System.out.println("文件不存在: " + filePath.toString());
+                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            }
+
+            // 获取文件名（优先使用原始文件名，如果没有则使用存储的文件名）
+            String filename = question.getAttachmentFileName();
+            System.out.println("问题附件原始文件名: " + filename);
+            System.out.println("问题附件存储路径: " + question.getAttachmentPath());
+            
+            if (filename == null || filename.isEmpty()) {
+                filename = question.getAttachmentPath();
+                System.out.println("使用存储文件名: " + filename);
+            } else {
+                System.out.println("使用原始文件名: " + filename);
+            }
+            
+            // 根据文件扩展名确定 Content-Type（使用原始文件名判断类型）
+            String contentType = determineContentType(filename);
+            
+            // 对文件名进行 URL 编码，确保特殊字符正确处理
+            String encodedFilename = java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("+", "%20");
+
+            System.out.println("最终下载文件名: " + filename);
+            System.out.println("Content-Type: " + contentType);
+
+            return ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, 
+                            "attachment; filename=\"" + filename + "\"; filename*=UTF-8''" + encodedFilename)
+                    .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                    .body(fileResource);
+
+        } catch (IllegalArgumentException e) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 下载回答附件
+     */
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/answers/{answerId}/attachment")
+    public ResponseEntity<org.springframework.core.io.Resource> downloadAnswerAttachment(
+            @PathVariable Long answerId) {
+        try {
+            Answer answer = answerService.findById(answerId);
+            if (answer.getAttachmentPath() == null || answer.getAttachmentPath().isEmpty()) {
+                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            }
+
+            // 获取文件路径
+            Path filePath = answerService.getAttachmentFilePath(answer.getAttachmentPath());
+            org.springframework.core.io.Resource fileResource = 
+                    new org.springframework.core.io.FileSystemResource(filePath);
+
+            if (!fileResource.exists()) {
+                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            }
+
+            // 获取文件名（优先使用原始文件名，如果没有则使用存储的文件名）
+            String filename = answer.getAttachmentFileName();
+            if (filename == null || filename.isEmpty()) {
+                filename = answer.getAttachmentPath();
+            }
+            
+            // 根据文件扩展名确定 Content-Type
+            String contentType = determineContentType(filename);
+            
+            // 对文件名进行 URL 编码
+            String encodedFilename = java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8)
+                    .replace("+", "%20");
+
+            return ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, 
+                            "attachment; filename=\"" + filename + "\"; filename*=UTF-8''" + encodedFilename)
+                    .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                    .body(fileResource);
+
+        } catch (IllegalArgumentException e) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 根据文件扩展名确定 Content-Type
+     */
+    private String determineContentType(String filename) {
+        if (filename == null || filename.isEmpty()) {
+            return "application/octet-stream";
+        }
+        
+        String lowerFilename = filename.toLowerCase();
+        if (lowerFilename.endsWith(".pdf")) {
+            return "application/pdf";
+        } else if (lowerFilename.endsWith(".doc") || lowerFilename.endsWith(".docx")) {
+            return "application/msword";
+        } else if (lowerFilename.endsWith(".xls") || lowerFilename.endsWith(".xlsx")) {
+            return "application/vnd.ms-excel";
+        } else if (lowerFilename.endsWith(".ppt") || lowerFilename.endsWith(".pptx")) {
+            return "application/vnd.ms-powerpoint";
+        } else if (lowerFilename.endsWith(".jpg") || lowerFilename.endsWith(".jpeg")) {
+            return "image/jpeg";
+        } else if (lowerFilename.endsWith(".png")) {
+            return "image/png";
+        } else if (lowerFilename.endsWith(".gif")) {
+            return "image/gif";
+        } else if (lowerFilename.endsWith(".txt")) {
+            return "text/plain";
+        } else if (lowerFilename.endsWith(".zip")) {
+            return "application/zip";
+        } else if (lowerFilename.endsWith(".rar")) {
+            return "application/x-rar-compressed";
+        } else {
+            return "application/octet-stream";
         }
     }
 }

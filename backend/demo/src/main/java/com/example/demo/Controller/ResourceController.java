@@ -8,6 +8,7 @@ import com.example.demo.Service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api/resources")
@@ -43,30 +45,75 @@ public class ResourceController {
 
     /**
      * 1. 资源上传接口 (学生和教师都可以上传)
-     * 使用 @RequestParam 接收文件，使用 @ModelAttribute 接收 JSON/表单数据
+     * 使用 @RequestPart 接收文件和 JSON 数据
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Resource> uploadResource(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("data") @Valid ResourceCreationRequest request,
+            @RequestPart(value = "data", required = false) String dataJson,
             Authentication authentication) {
+
+        System.out.println("=== 资源上传请求到达 ===");
+        System.out.println("文件名: " + (file != null ? file.getOriginalFilename() : "null"));
+        System.out.println("文件大小: " + (file != null ? file.getSize() : "null"));
+        System.out.println("JSON 字符串: " + dataJson);
+        System.out.println("当前用户: " + (authentication != null ? authentication.getName() : "null"));
+
+        // 手动解析 JSON
+        ResourceCreationRequest request = null;
+        if (dataJson != null && !dataJson.isEmpty()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                request = objectMapper.readValue(dataJson, ResourceCreationRequest.class);
+                System.out.println("解析后的请求数据: title=" + request.getTitle() + ", courseId=" + request.getCourseId());
+            } catch (Exception e) {
+                System.out.println("JSON 解析失败: " + e.getMessage());
+                e.printStackTrace();
+                return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            }
+        } else {
+            System.out.println("警告: data 部分为空");
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+
+        // 验证请求数据
+        if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
+            System.out.println("错误: 资源标题为空");
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
+        if (request.getCourseId() == null) {
+            System.out.println("错误: 课程ID为空");
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        }
 
         try {
             // 获取当前登录用户（确保用户存在）
             User uploader = userService.findUserByUsername(authentication.getName());
 
             if (uploader == null) {
-                // 如果 Token 是有效的，但用户在 DB 中被删除了，返回 404/403
+                System.out.println("错误: 用户不存在");
                 return new ResponseEntity<>(HttpStatus.FORBIDDEN);
             }
 
             Resource savedResource = resourceService.uploadResource(file, request, uploader);
+            System.out.println("资源上传成功，ID: " + savedResource.getId());
             return new ResponseEntity<>(savedResource, HttpStatus.CREATED);
 
+        } catch (SecurityException e) {
+            System.out.println("权限错误: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>(HttpStatus.FORBIDDEN);
         } catch (IllegalArgumentException e) {
+            System.out.println("参数错误: " + e.getMessage());
+            e.printStackTrace();
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         } catch (IOException e) {
-            // 记录文件存储错误
+            System.out.println("IO错误: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        } catch (Exception e) {
+            System.out.println("未知错误: " + e.getMessage());
+            e.printStackTrace();
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -155,5 +202,39 @@ public class ResourceController {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-    // ... 未来可添加 deleteResource, updateResourceInfo 等方法
+    /**
+     * 获取当前用户上传的资源列表（学生/教师个人中心）
+     */
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/my-uploads")
+    public ResponseEntity<Page<Resource>> getMyUploads(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            Authentication authentication) {
+        try {
+            User currentUser = userService.findUserByUsername(authentication.getName());
+            Page<Resource> resources = resourceService.findMyResources(
+                    currentUser.getId(),
+                    PageRequest.of(page, size));
+            return ResponseEntity.ok(resources);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * 删除资源（限制为上传者或管理员）
+     */
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or @resourceService.findById(#id).uploader.username == authentication.name")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteResource(@PathVariable Long id) {
+        try {
+            resourceService.deleteResource(id);
+            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        } catch (IllegalArgumentException e) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 }

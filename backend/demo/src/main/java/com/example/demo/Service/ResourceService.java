@@ -1,6 +1,7 @@
 package com.example.demo.Service;
 
 import com.example.demo.Dto.ResourceCreationRequest;
+import com.example.demo.Dto.ResourceUpdateRequest;
 import com.example.demo.Entity.Course;
 import com.example.demo.Entity.Resource;
 import com.example.demo.Entity.User;
@@ -20,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.Objects;
 
 @Service
 public class ResourceService {
@@ -52,13 +54,24 @@ public class ResourceService {
         Course course = courseRepository.findById(request.getCourseId())
                 .orElseThrow(() -> new IllegalArgumentException("课程不存在。"));
 
+        // 2.1 教师上传时，必须是该课程的授课教师
+        if ("TEACHER".equals(uploader.getRole())) {
+            if (!Objects.equals(course.getTeacherId(), uploader.getId())) {
+                // 使用 SecurityException 让 Controller 返回 403，而不是 400
+                throw new SecurityException("无权限：您不是该课程的授课教师，不能为该课程上传资源。");
+            }
+        }
+
         // 3. 处理文件存储
         // 使用 UUID 确保文件名唯一，防止覆盖
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
         String fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
         String storageFilename = UUID.randomUUID().toString() + fileExtension;
 
-        Path copyLocation = Paths.get(uploadDir + storageFilename);
+        // 确保上传目录存在，并正确拼接路径，避免缺少路径分隔符导致找不到文件
+        Path uploadPath = Paths.get(uploadDir);
+        Files.createDirectories(uploadPath);
+        Path copyLocation = uploadPath.resolve(storageFilename);
         Files.copy(file.getInputStream(), copyLocation);
 
         // 4. 构建 Resource 实体
@@ -115,6 +128,15 @@ public class ResourceService {
                 .orElseThrow(() -> new IllegalArgumentException("资源不存在。"));
     }
 
+    /**
+     * 管理员：搜索所有资源（不限制课程，支持关键字）
+     */
+    public Page<Resource> searchAllResources(String keyword, Pageable pageable) {
+        // 如果关键字为空，传入 null 让查询匹配所有记录
+        String searchKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        return resourceRepository.findAllByKeyword(searchKeyword, pageable);
+    }
+
     // 删除资源
     public void deleteResource(Long id) {
         resourceRepository.deleteById(id);
@@ -126,7 +148,7 @@ public class ResourceService {
     }
 
     // 修改资源说明信息（适用于管理员和上传者）
-    public Resource updateResourceInfo(Long id, ResourceCreationRequest request) {
+    public Resource updateResourceInfo(Long id, ResourceUpdateRequest request) {
         Resource existing = resourceRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("资源不存在。"));
 
@@ -224,6 +246,13 @@ public class ResourceService {
         // 不能修改课程ID和上传者，除非是特殊管理员操作，这里只允许修改标题和描述。
 
         return resourceRepository.save(existing);
+    }
+
+    /**
+     * 统计指定学生上传的资源的总下载次数
+     */
+    public Long sumDownloadCountByStudentId(Long studentId) {
+        return resourceRepository.sumDownloadCountByStudentId(studentId);
     }
 
     // 还需要在 ResourceService 中添加一个 findById(Long id) 方便 @PreAuthorize 调用

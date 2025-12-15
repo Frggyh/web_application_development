@@ -1,6 +1,7 @@
 package com.example.demo.Service;
 
 import com.example.demo.Dto.QuestionCreationRequest;
+import com.example.demo.Dto.QuestionUpdateRequest;
 import com.example.demo.Entity.Course;
 import com.example.demo.Entity.Question;
 import com.example.demo.Entity.User;
@@ -20,7 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class QuestionService {
@@ -66,13 +66,30 @@ public class QuestionService {
         // 3. 处理附件（如果存在）
         if (attachment != null && !attachment.isEmpty()) {
             String originalFilename = StringUtils.cleanPath(attachment.getOriginalFilename());
-            String fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            String storageFilename = "qa_attach_" + UUID.randomUUID().toString() + fileExtension;
+            
+            // 直接使用原始文件名存储（如果文件已存在，则覆盖）
+            // 确保上传目录存在，并正确拼接路径
+            Path uploadPath = Paths.get(uploadDir);
+            Files.createDirectories(uploadPath);
+            Path copyLocation = uploadPath.resolve(originalFilename);
+            
+            System.out.println("=== 问题附件上传 ===");
+            System.out.println("原始文件名: " + originalFilename);
+            System.out.println("存储文件名: " + originalFilename + " (使用原始文件名)");
+            System.out.println("上传目录: " + uploadPath.toString());
+            System.out.println("完整保存路径: " + copyLocation.toString());
+            
+            Files.copy(attachment.getInputStream(), copyLocation, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            
+            System.out.println("文件保存成功，路径: " + copyLocation.toString());
+            System.out.println("文件是否存在: " + Files.exists(copyLocation));
 
-            Path copyLocation = Paths.get(uploadDir + storageFilename);
-            Files.copy(attachment.getInputStream(), copyLocation);
-
-            question.setAttachmentPath(storageFilename);
+            // 存储文件名和原始文件名都使用原始文件名
+            question.setAttachmentPath(originalFilename);
+            question.setAttachmentFileName(originalFilename);
+            
+            System.out.println("已设置 attachmentPath: " + originalFilename);
+            System.out.println("已设置 attachmentFileName: " + originalFilename);
         }
 
         question.setStatus("UNANSWERED");
@@ -118,9 +135,12 @@ public class QuestionService {
     }
 
     /**
-     * 获取用户提出的问题列表 (学生个人中心)
+     * 获取用户提出的问题列表 (学生个人中心，可按状态过滤)
      */
-    public Page<Question> findMyQuestions(Long askerId, Pageable pageable) {
+    public Page<Question> findMyQuestions(Long askerId, String status, Pageable pageable) {
+        if (status != null && !status.isBlank()) {
+            return questionRepository.findByAskerIdAndStatus(askerId, status, pageable);
+        }
         return questionRepository.findByAskerId(askerId, pageable);
     }
 
@@ -150,6 +170,20 @@ public class QuestionService {
     }
 
     /**
+     * 管理员：修改问题信息（不需要 courseId）
+     */
+    public Question updateQuestionInfo(Long id, QuestionUpdateRequest request) {
+        Question existing = questionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("问题不存在。"));
+
+        existing.setTitle(request.getTitle());
+        existing.setContent(request.getContent());
+        // 不允许修改所属课程
+
+        return questionRepository.save(existing);
+    }
+
+    /**
      * 统计指定教师所教授课程的未回答问题数量
      */
     public Long countUnansweredQuestionsForTeacher(Long teacherId) {
@@ -165,9 +199,65 @@ public class QuestionService {
     }
 
     /**
+     * 统计指定学生提出的问题总数
+     */
+    public Long countQuestionsByStudentId(Long studentId) {
+        return questionRepository.countQuestionsByStudentId(studentId);
+    }
+
+    /**
      * 统计指定学生提出的、已被回答的问题数量
+     */
+    public Long countAnsweredQuestionsByStudentId(Long studentId) {
+        return questionRepository.countAnsweredQuestionsByStudentId(studentId);
+    }
+
+    /**
+     * 统计指定学生提出的、已被回答的问题数量（别名方法，保持兼容性）
      */
     public Long countAnsweredQuestionsForStudent(Long studentId) {
         return questionRepository.countAnsweredQuestionsByStudentId(studentId);
+    }
+
+    /**
+     * 管理员：查询所有问题（支持关键字搜索和状态筛选，不限制课程）
+     */
+    public Page<Question> findAllQuestions(String keyword, String status, Pageable pageable) {
+        String searchKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        String searchStatus = (status == null || status.isBlank()) ? null : status;
+        return questionRepository.findAllByKeywordAndStatus(searchKeyword, searchStatus, pageable);
+    }
+
+    /**
+     * 学生全站搜索：支持按课程、教师、关键字、状态筛选
+     * @param courseId 课程ID（可选）
+     * @param teacherId 教师ID（可选）
+     * @param keyword 关键字（可选）
+     * @param status 状态（可选）
+     * @param pageable 分页信息
+     * @return 分页结果
+     */
+    public Page<Question> searchAllQuestions(Long courseId, Long teacherId, String keyword, String status, Pageable pageable) {
+        Long searchCourseId = (courseId != null && courseId > 0) ? courseId : null;
+        Long searchTeacherId = (teacherId != null && teacherId > 0) ? teacherId : null;
+        String searchKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        String searchStatus = (status == null || status.isBlank()) ? null : status;
+        return questionRepository.searchAllQuestions(searchCourseId, searchTeacherId, searchKeyword, searchStatus, pageable);
+    }
+
+    /**
+     * 获取问题附件文件路径
+     */
+    public Path getAttachmentFilePath(String attachmentPath) {
+        if (attachmentPath == null || attachmentPath.isEmpty()) {
+            throw new IllegalArgumentException("附件路径为空");
+        }
+        // 使用 Paths.get 和 resolve 正确拼接路径，并使用 normalize 规范化路径
+        Path uploadPath = Paths.get(uploadDir);
+        Path filePath = uploadPath.resolve(attachmentPath).normalize();
+        System.out.println("问题附件路径 - uploadDir: " + uploadDir);
+        System.out.println("问题附件路径 - attachmentPath: " + attachmentPath);
+        System.out.println("问题附件路径 - 完整路径: " + filePath.toString());
+        return filePath;
     }
 }

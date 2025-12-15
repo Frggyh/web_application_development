@@ -61,6 +61,9 @@ public class UserController {
         final UserDetails userDetails = userService
                 .loadUserByUsername(authenticationRequest.getUsername());
 
+        // 2.1 获取完整的 User 实体以便返回用户ID
+        User user = userService.findUserByUsername(authenticationRequest.getUsername());
+
         // 3. 使用 JwtUtil 生成 JWT Token
         final String jwt = jwtUtil.generateToken(userDetails);
 
@@ -74,8 +77,27 @@ public class UserController {
             String fullRole = auth.getAuthority();
             response.setRole(fullRole.replace("ROLE_", ""));
         });
+        if (user != null) {
+            response.setUserId(user.getId());
+        }
 
         // 返回 200 OK 和 Token
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 获取教师列表（所有登录用户可访问，用于下拉选择）
+     */
+    @GetMapping("/teachers")
+    public ResponseEntity<?> getTeachers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "1000") int size
+    ) {
+        try {
+            org.springframework.data.domain.Page<User> teachers = userService.getTeachers(page, size);
+            return ResponseEntity.ok(teachers);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }
