@@ -1,0 +1,146 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import request from '@/utils/request'
+
+export const useAuthStore = defineStore('auth', () => {
+    // 状态：从 localStorage 初始化
+    const token = ref(localStorage.getItem('token') || '')
+    const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+
+    // 计算属性
+    const isLoggedIn = computed(() => !!token.value)
+    const userRole = computed(() => user.value?.role || '')
+
+    async function fetchProfile() {
+        try {
+            const profile = await request({
+                url: '/profile',
+                method: 'get'
+            })
+            return profile
+        } catch (error) {
+            console.error('获取用户信息失败:', error)
+            return null
+        }
+    }
+
+    /**
+     * 登录操作
+     * @param {Object} credentials - { username, password }
+     * @returns {Promise<Object>} - 返回后端响应数据
+     */
+    async function loginAction(credentials) {
+        try {
+            // 调用后端登录接口 POST /api/users/login
+            const response = await request({
+                url: '/users/login',
+                method: 'post',
+                data: credentials
+            })
+
+            // 后端返回格式: { token, username, role, userId }
+            const { token: jwtToken, username, role, userId } = response
+
+            // 更新状态
+            token.value = jwtToken
+
+            let profileId = userId
+            let profileRole = role
+
+            // 如果后端未返回用户ID或角色，尝试读取个人资料
+            if (!profileId || !profileRole) {
+                const profile = await fetchProfile()
+                if (profile) {
+                    profileId = profile.id
+                    profileRole = profile.role || profileRole
+                }
+            }
+
+            const userInfo = {
+                id: profileId || null,
+                username,
+                role: profileRole
+            }
+
+            user.value = userInfo
+
+            // 持久化到 localStorage
+            localStorage.setItem('token', jwtToken)
+            localStorage.setItem('user', JSON.stringify(userInfo))
+
+            ElMessage.success(`欢迎回来，${username}！`)
+            return response
+
+        } catch (error) {
+            console.error('登录失败:', error)
+
+            // 错误提示
+            const errorMsg = error.response?.data?.message
+                || error.response?.data
+                || '登录失败，请检查用户名和密码'
+
+            ElMessage.error(errorMsg)
+            throw error
+        }
+    }
+
+    /**
+     * 登出操作
+     */
+    function logout() {
+        token.value = ''
+        user.value = null
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+    }
+
+    /**
+     * 初始化认证状态（页面刷新时调用）
+     */
+    async function initAuth() {
+        const storedToken = localStorage.getItem('token')
+        const storedUser = localStorage.getItem('user')
+
+        if (storedToken) {
+            token.value = storedToken
+        }
+
+        if (storedUser) {
+            try {
+                user.value = JSON.parse(storedUser)
+            } catch (error) {
+                user.value = null
+            }
+        }
+
+        // 如果有 token 但没有用户信息或缺少 ID，则尝试从 /profile 获取
+        if (token.value && (!user.value || !user.value.id)) {
+            const profile = await fetchProfile()
+            if (profile) {
+                const info = {
+                    id: profile.id,
+                    username: profile.username,
+                    role: profile.role || user.value?.role || ''
+                }
+                user.value = info
+                localStorage.setItem('user', JSON.stringify(info))
+            }
+        }
+    }
+
+    return {
+        // 状态
+        token,
+        user,
+
+        // 计算属性
+        isLoggedIn,
+        userRole,
+
+        // 方法
+        loginAction,
+        logout,
+        initAuth
+    }
+})

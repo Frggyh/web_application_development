@@ -27,4 +27,10 @@ public class User {
 
     @Column(length = 500)
     private String introduction; // 简介 (教师专用)
+
+    @Column(length = 100)
+    private String email; // 邮箱
+
+    @Column(length = 500)
+    private String avatar; // 头像URL或文件路径
 }

@@ -38,6 +38,10 @@ public class Question {
     // 附件路径（支持上传图片作为附件）
     @Column(length = 255)
     private String attachmentPath;
+    
+    // 附件原始文件名
+    @Column(length = 255)
+    private String attachmentFileName;
 
     // 问题状态：UNANSWERED, ANSWERED
     @Column(length = 20, nullable = false)

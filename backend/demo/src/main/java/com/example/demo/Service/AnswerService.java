@@ -1,6 +1,7 @@
 package com.example.demo.Service;
 
 import com.example.demo.Dto.AnswerCreationRequest;
+import com.example.demo.Dto.AnswerUpdateRequest;
 import com.example.demo.Entity.Answer;
 import com.example.demo.Entity.Question;
 import com.example.demo.Entity.User;
@@ -18,7 +19,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class AnswerService {
@@ -61,9 +63,23 @@ public class AnswerService {
             throw new SecurityException("无权限：该教师不负责该课程的问答。");
         }
 
-        // ... 3. 处理附件（不变） ...
-
         Answer answer = new Answer();
+        
+        // 3. 处理附件（如果存在）
+        if (attachment != null && !attachment.isEmpty()) {
+            String originalFilename = StringUtils.cleanPath(attachment.getOriginalFilename());
+
+            // 直接使用原始文件名存储（如果文件已存在，则覆盖）
+            // 确保上传目录存在，并正确拼接路径
+            Path uploadPath = Paths.get(uploadDir);
+            Files.createDirectories(uploadPath);
+            Path copyLocation = uploadPath.resolve(originalFilename);
+            Files.copy(attachment.getInputStream(), copyLocation, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            // 存储文件名和原始文件名都使用原始文件名
+            answer.setAttachmentPath(originalFilename);
+            answer.setAttachmentFileName(originalFilename);
+        }
         answer.setContent(request.getContent());
         answer.setQuestion(question);
         answer.setReplier(replier);
@@ -96,6 +112,18 @@ public class AnswerService {
     }
 
     /**
+     * 管理员：修改回答信息（不需要 questionId）
+     */
+    public Answer updateAnswerInfo(Long answerId, AnswerUpdateRequest request) {
+        Answer existing = answerRepository.findById(answerId)
+                .orElseThrow(() -> new IllegalArgumentException("回答不存在。"));
+
+        existing.setContent(request.getContent());
+
+        return answerRepository.save(existing);
+    }
+
+    /**
      * 删除回答 (教师本人/管理员)
      * 同时检查是否需要将 Question 状态改回 UNANSWERED
      */
@@ -115,5 +143,36 @@ public class AnswerService {
         }
     }
 
+    /**
+     * 管理员：查询所有回答（支持关键字搜索，不限制问题）
+     */
+    public Page<Answer> findAllAnswers(String keyword, Pageable pageable) {
+        String searchKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        return answerRepository.findAllByKeyword(searchKeyword, pageable);
+    }
+
+    /**
+     * 获取回答附件文件路径
+     */
+    public Path getAttachmentFilePath(String attachmentPath) {
+        if (attachmentPath == null || attachmentPath.isEmpty()) {
+            throw new IllegalArgumentException("附件路径为空");
+        }
+        // 使用 Paths.get 和 resolve 正确拼接路径，并使用 normalize 规范化路径
+        Path uploadPath = Paths.get(uploadDir);
+        Path filePath = uploadPath.resolve(attachmentPath).normalize();
+        System.out.println("回答附件路径 - uploadDir: " + uploadDir);
+        System.out.println("回答附件路径 - attachmentPath: " + attachmentPath);
+        System.out.println("回答附件路径 - 完整路径: " + filePath.toString());
+        return filePath;
+    }
+
+    /**
+     * 根据ID获取回答
+     */
+    public Answer findById(Long answerId) {
+        return answerRepository.findById(answerId)
+                .orElseThrow(() -> new IllegalArgumentException("回答不存在。"));
+    }
 
 }

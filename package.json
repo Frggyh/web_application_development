@@ -1,0 +1,19 @@
+{
+  "name": "web_application_development",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Frggyh/web_application_development.git"
+  },
+  "private": true,
+  "dependencies": {
+    "element-plus": "^2.11.9",
+    "pinia": "^3.0.4",
+    "vue-router": "^4.6.3"
+  }
+}

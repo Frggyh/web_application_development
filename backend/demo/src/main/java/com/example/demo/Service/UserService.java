@@ -1,11 +1,15 @@
 package com.example.demo.Service;
 
+import com.example.demo.Dto.AdminUserUpdateRequest;
 import com.example.demo.Entity.Course;
 import com.example.demo.Entity.User;
 import com.example.demo.Repository.UserRepository;
 import com.example.demo.Repository.CourseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -76,7 +80,7 @@ public class UserService {
     }
 
     /**
-     * 通用：更新个人信息 (例如职称、简介等)
+     * 通用：更新个人信息 (例如职称、简介、邮箱、头像等)
      */
     public User updateProfile(String username, User updateDetails) {
         User existing = userRepository.findByUsername(username);
@@ -89,6 +93,12 @@ public class UserService {
         }
         if (updateDetails.getIntroduction() != null) {
             existing.setIntroduction(updateDetails.getIntroduction());
+        }
+        if (updateDetails.getEmail() != null) {
+            existing.setEmail(updateDetails.getEmail());
+        }
+        if (updateDetails.getAvatar() != null) {
+            existing.setAvatar(updateDetails.getAvatar());
         }
         // 阻止用户修改角色和ID
 
@@ -184,5 +194,60 @@ public class UserService {
      */
     public List<Long> findTaughtCourseIds(Long teacherId) {
         return courseRepository.findCourseIdsByTeacherId(teacherId);
+    }
+
+    /**
+     * [Admin/Controller专用] 分页查询教师列表
+     */
+    public Page<User> getTeachers(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return userRepository.findByRoleIgnoreCase("TEACHER", pageable);
+    }
+
+    /**
+     * [Admin/Controller专用] 通用用户列表，可按角色、用户名过滤
+     */
+    public Page<User> getUsers(int page, int size, String role, String keyword) {
+        Pageable pageable = PageRequest.of(page, size);
+
+        if (role != null && !role.isBlank() && keyword != null && !keyword.isBlank()) {
+            return userRepository.findByRoleIgnoreCaseAndUsernameContainingIgnoreCase(role, keyword, pageable);
+        }
+
+        if (role != null && !role.isBlank()) {
+            return userRepository.findByRoleIgnoreCase(role, pageable);
+        }
+
+        if (keyword != null && !keyword.isBlank()) {
+            return userRepository.findByUsernameContainingIgnoreCase(keyword, pageable);
+        }
+
+        return userRepository.findAll(pageable);
+    }
+
+    /**
+     * [Admin/Controller专用] 更新用户的角色/密码/简介等
+     */
+    public User adminUpdateUser(Long id, AdminUserUpdateRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在。"));
+
+        if (request.getRole() != null && !request.getRole().isBlank()) {
+            user.setRole(request.getRole().toUpperCase());
+        }
+
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            user.setPassword(request.getPassword());
+        }
+
+        if (request.getTitle() != null) {
+            user.setTitle(request.getTitle());
+        }
+
+        if (request.getIntroduction() != null) {
+            user.setIntroduction(request.getIntroduction());
+        }
+
+        return userRepository.save(user);
     }
 }

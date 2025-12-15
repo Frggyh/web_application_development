@@ -51,4 +51,20 @@ public interface ResourceRepository extends JpaRepository<Resource, Long> {
             @Param("visibilityList") List<String> visibilityList,
             @Param("keyword") String keyword,
             Pageable pageable);
+
+    /**
+     * 管理员：按关键字搜索所有资源（平台所有课程）
+     */
+    @Query("SELECT r FROM Resource r " +
+            "WHERE (:keyword IS NULL OR :keyword = '' OR " +
+            "r.title LIKE CONCAT('%', :keyword, '%') OR r.description LIKE CONCAT('%', :keyword, '%'))")
+    Page<Resource> findAllByKeyword(
+            @Param("keyword") String keyword,
+            Pageable pageable);
+
+    /**
+     * 统计指定学生上传的资源的总下载次数
+     */
+    @Query("SELECT COALESCE(SUM(r.downloadCount), 0) FROM Resource r WHERE r.uploader.id = :studentId")
+    Long sumDownloadCountByStudentId(@Param("studentId") Long studentId);
 }
